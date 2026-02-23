@@ -1,11 +1,23 @@
 import { NextRequest } from 'next/server'
 
+// ── CORS headers — allows your app to call this API ──────────────
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+// Handle preflight OPTIONS request
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { imageBase64, occasion, vibe, gender } = await request.json()
 
     if (!imageBase64) {
-      return Response.json({ error: 'No image provided' }, { status: 400 })
+      return Response.json({ error: 'No image provided' }, { status: 400, headers: CORS })
     }
 
     const prompt = `You are VOGUE — an elite AI fashion stylist with the sharp eye of a Vogue editor,
@@ -55,7 +67,7 @@ Respond ONLY with valid JSON, absolutely no markdown or extra text:
     if (!geminiRes.ok) {
       const err = await geminiRes.json()
       console.error('Gemini error:', err)
-      return Response.json({ error: 'AI analysis failed. Please try again.' }, { status: 500 })
+      return Response.json({ error: 'AI analysis failed. Please try again.' }, { status: 500, headers: CORS })
     }
 
     const geminiData = await geminiRes.json()
@@ -63,10 +75,10 @@ Respond ONLY with valid JSON, absolutely no markdown or extra text:
     const clean = text.replace(/```json|```/g, '').trim()
     const result = JSON.parse(clean)
 
-    return Response.json({ result })
+    return Response.json({ result }, { headers: CORS })
 
   } catch (error) {
     console.error('Analyze error:', error)
-    return Response.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
+    return Response.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: CORS })
   }
 }
