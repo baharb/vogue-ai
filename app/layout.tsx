@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'VOGUE AI — Your Personal Stylist',
+  title: 'VOGUE AI — Your Personal Stylist.',
   description: 'AI-powered fashion styling. Upload any outfit and get an instant score, specific fixes, and style advice.',
 }
 
