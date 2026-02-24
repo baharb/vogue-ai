@@ -1,4 +1,4 @@
-gemini-2.0-flash-expimport { NextRequest } from 'next/server'
+import { NextRequest } from 'next/server'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
