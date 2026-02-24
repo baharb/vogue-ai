@@ -1,13 +1,11 @@
 import { NextRequest } from 'next/server'
 
-// ── CORS headers — allows your app to call this API ──────────────
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-// Handle preflight OPTIONS request
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS })
 }
@@ -41,8 +39,7 @@ Use this exact structure:
           ]}],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1200,
-            responseMimeType: 'application/json'
+            maxOutputTokens: 1200
           }
         })
       }
@@ -55,16 +52,28 @@ Use this exact structure:
     }
 
     const geminiData = await geminiRes.json()
-    const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const candidate = geminiData.candidates?.[0]
+    const text = candidate?.content?.parts?.[0]?.text || ''
+
+    console.log('Finish reason:', candidate?.finishReason)
+    console.log('Text preview:', text.slice(0, 300))
+
+    if (!text) {
+      console.error('Empty response:', JSON.stringify(geminiData))
+      return Response.json({ error: 'AI returned empty response. Try again.' }, { status: 500, headers: CORS })
+    }
 
     // Robust JSON extraction
     let result
     try {
-      result = JSON.parse(text)
-    } catch {
-      const match = text.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error('No JSON found in response')
-      result = JSON.parse(match[0])
+      const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      const start = clean.indexOf('{')
+      const end = clean.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('No JSON braces found')
+      result = JSON.parse(clean.slice(start, end + 1))
+    } catch (e) {
+      console.error('Parse error:', e, 'Raw text:', text.slice(0, 500))
+      return Response.json({ error: 'Could not parse AI response. Try again.' }, { status: 500, headers: CORS })
     }
 
     return Response.json({ result }, { headers: CORS })
