@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const prompt = `You are VOGUE, an elite fashion stylist and trend expert. Answer this question with expert knowledge and real personality. Be specific, actionable, and opinionated — like a knowledgeable stylish friend. Keep it under 180 words.\n\nQuestion: ${question}`
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
