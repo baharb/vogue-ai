@@ -39,7 +39,7 @@ Use this exact structure:
           ]}],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1200
+            maxOutputTokens: 2000
           }
         })
       }
