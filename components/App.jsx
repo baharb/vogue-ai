@@ -599,7 +599,15 @@ function ChatPanel({ result, occasion }) {
     setMsgs(newMsgs)
     setLoading(true)
     try {
-      const ctx = `Score: ${result.overall_score}/10, Archetype: ${result.style_archetype}, Occasion: ${occasion}`
+      const ctx = `Score: ${result.overall_score}/10
+      Headline: ${result.headline}
+      Archetype: ${result.style_archetype}
+      Occasion: ${occasion}
+      Stylist note: ${result.stylist_note}
+      What works: ${result.what_works?.join(', ')}
+      Improvements needed: ${result.improvements?.map(i => i.item + ': ' + i.action).join('; ')}
+      Categories: ${result.categories?.map(c => c.name + ' ' + c.score + '/10 — ' + c.note).join('; ')}
+      Upgrade tip: ${result.upgrade_tip}`
       const reply = await apiChat(q, ctx, msgs)
       setMsgs(m => [...m, { role: 'stylist', text: reply }])
     } catch {
