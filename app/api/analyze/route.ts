@@ -20,37 +20,14 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'No image provided' }, { status: 400, headers: CORS })
     }
 
-    const prompt = `You are VOGUE — an elite AI fashion stylist with the sharp eye of a Vogue editor,
-the warmth of a personal stylist, and the honesty of a best friend. Analyze this outfit image with
-extreme specificity — reference the actual items you see in the photo.
+    const prompt = `You are VOGUE — an elite AI fashion stylist. Analyze this outfit image.
 
 Context: Occasion="${occasion || 'Casual'}", Style="${vibe || 'any'}", Gender="${gender || 'any'}"
 
-Respond ONLY with valid JSON, absolutely no markdown or extra text:
-{
-  "overall_score": 7.4,
-  "headline": "One sharp punchy sentence about this look",
-  "stylist_note": "2-3 sentences — honest, specific, warm. Reference exact items you see.",
-  "style_archetype": "e.g. Off-Duty Model / Corporate Minimalist / Street Luxe",
-  "categories": [
-    {"name":"Color Harmony","score":8.2,"note":"specific observation"},
-    {"name":"Fit & Proportions","score":7.0,"note":"specific observation"},
-    {"name":"Occasion Match","score":8.5,"note":"specific observation"},
-    {"name":"Trend Awareness","score":6.8,"note":"specific observation"},
-    {"name":"Accessories","score":7.2,"note":"specific observation"},
-    {"name":"Fabric & Texture","score":7.5,"note":"specific observation"},
-    {"name":"Overall Vibe","score":7.8,"note":"specific observation"}
-  ],
-  "improvements": [
-    {"priority":"high","item":"Specific item","action":"Exact fix"},
-    {"priority":"medium","item":"Specific item","action":"Exact fix"},
-    {"priority":"low","item":"Specific item","action":"Exact fix"}
-  ],
-  "what_works": ["Strength 1","Strength 2","Strength 3"],
-  "trend_tags": ["#tag1","#tag2","#tag3"],
-  "upgrade_tip": "One power move to jump the score",
-  "color_palette": ["#hex1","#hex2","#hex3"]
-}`
+You MUST respond with ONLY a valid JSON object. No markdown, no backticks, no explanation. Start with { and end with }.
+
+Use this exact structure:
+{"overall_score":7.4,"headline":"One punchy sentence about this look","stylist_note":"2-3 honest specific sentences referencing exact items visible.","style_archetype":"Off-Duty Model","categories":[{"name":"Color Harmony","score":8.2,"note":"observation"},{"name":"Fit & Proportions","score":7.0,"note":"observation"},{"name":"Occasion Match","score":8.5,"note":"observation"},{"name":"Trend Awareness","score":6.8,"note":"observation"},{"name":"Accessories","score":7.2,"note":"observation"},{"name":"Fabric & Texture","score":7.5,"note":"observation"},{"name":"Overall Vibe","score":7.8,"note":"observation"}],"improvements":[{"priority":"high","item":"Item name","action":"Specific fix"},{"priority":"medium","item":"Item name","action":"Specific fix"},{"priority":"low","item":"Item name","action":"Specific fix"}],"what_works":["Strength 1","Strength 2","Strength 3"],"trend_tags":["#tag1","#tag2","#tag3"],"upgrade_tip":"One power move to raise the score","color_palette":["#8B7355","#2C2416","#C4A882"]}`
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -58,8 +35,15 @@ Respond ONLY with valid JSON, absolutely no markdown or extra text:
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }, { text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 1200 }
+          contents: [{ parts: [
+            { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } },
+            { text: prompt }
+          ]}],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1200,
+            responseMimeType: 'application/json'
+          }
         })
       }
     )
@@ -72,8 +56,16 @@ Respond ONLY with valid JSON, absolutely no markdown or extra text:
 
     const geminiData = await geminiRes.json()
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const clean = text.replace(/```json|```/g, '').trim()
-    const result = JSON.parse(clean)
+
+    // Robust JSON extraction
+    let result
+    try {
+      result = JSON.parse(text)
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error('No JSON found in response')
+      result = JSON.parse(match[0])
+    }
 
     return Response.json({ result }, { headers: CORS })
 
