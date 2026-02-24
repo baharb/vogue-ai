@@ -208,7 +208,7 @@ const T = {
 
 const LangContext = createContext({ lang: 'en', t: T.en, setLang: () => {} })
 
-const BACKEND_URL = 'https://vogue-ai-gmj1.vercel.app' // ← Change this after deploying
+const BACKEND_URL = 'https://your-app.vercel.app' // ← Change this after deploying
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const CSS = `
@@ -356,11 +356,11 @@ async function storageSet(key, val) {
 // ─── API CALLS → YOUR VERCEL BACKEND ─────────────────────────────────────────
 // Key is hidden on your server — users never see it
 
-async function apiAnalyze(imageBase64, occasion, vibe, gender) {
+async function apiAnalyze(imageBase64, occasion, vibe, gender, langInstruction = '') {
   const res = await fetch(`${BACKEND_URL}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64, occasion, vibe, gender })
+    body: JSON.stringify({ imageBase64, occasion, vibe, gender, langInstruction })
   })
   if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed') }
   const data = await res.json()
@@ -472,18 +472,26 @@ function LangPicker() {
   const current = LANGUAGES.find(l => l.code === lang)
   return (
     <div style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)} style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border)', borderRadius: 3, padding: '4px 10px', color: 'var(--gold)', cursor: 'pointer', fontSize: 11, fontFamily: "'Jost',sans-serif", fontWeight: 600, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-        {current?.label} <span style={{ fontSize: 8, opacity: .6 }}>▼</span>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border)', borderRadius: 3, padding: '5px 10px', color: 'var(--gold)', cursor: 'pointer', fontSize: 11, fontFamily: "'Jost',sans-serif", fontWeight: 600, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+        🌐 {current?.label} <span style={{ fontSize: 8, opacity: .6 }}>▼</span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '110%', right: 0, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', zIndex: 999, minWidth: 120, boxShadow: '0 8px 32px rgba(0,0,0,.6)' }}>
-          {LANGUAGES.map(l => (
-            <button key={l.code} onClick={() => { setLang(l.code); setOpen(false) }}
-              style={{ display: 'block', width: '100%', padding: '9px 14px', background: lang === l.code ? 'rgba(200,169,110,.12)' : 'none', border: 'none', color: lang === l.code ? 'var(--gold)' : 'var(--cream)', cursor: 'pointer', fontSize: 12, fontFamily: "'Jost',sans-serif", textAlign: 'left', transition: 'background .15s', direction: l.dir }}>
-              <span style={{ marginRight: 8, opacity: .6, fontSize: 10 }}>{l.label}</span>{l.name}
-            </button>
-          ))}
-        </div>
+        <>
+          {/* backdrop to close on outside click */}
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 997 }} />
+          <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#1a1612', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', zIndex: 998, minWidth: 150, boxShadow: '0 12px 40px rgba(0,0,0,.8)' }}>
+            <div style={{ padding: '8px 14px 6px', fontSize: 9, color: 'var(--muted)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Language</div>
+            {LANGUAGES.map(l => (
+              <button key={l.code} onClick={() => { setLang(l.code); setOpen(false) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: lang === l.code ? 'rgba(200,169,110,.12)' : 'none', border: 'none', borderBottom: '1px solid rgba(255,255,255,.03)', color: lang === l.code ? 'var(--gold)' : 'var(--cream)', cursor: 'pointer', fontSize: 13, fontFamily: "'Jost',sans-serif", textAlign: 'left', transition: 'background .15s' }}>
+                <span style={{ fontSize: 10, opacity: .5, minWidth: 22, fontWeight: 700 }}>{l.label}</span>
+                <span style={{ direction: l.dir }}>{l.name}</span>
+                {lang === l.code && <span style={{ marginLeft: 'auto', color: 'var(--gold)', fontSize: 12 }}>✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -572,6 +580,7 @@ function WelcomeScreen({ onStart }) {
 
 // ─── RATE SCREEN ──────────────────────────────────────────────────────────────
 function RateScreen({ onResult, savedVibe }) {
+  const { t, lang } = useContext(LangContext)
   const [img, setImg] = useState(null)
   const [file, setFile] = useState(null)
   const [occasion, setOccasion] = useState('Casual')
@@ -600,7 +609,7 @@ function RateScreen({ onResult, savedVibe }) {
       setProgress('Sending to AI stylist...')
       const b64 = await fileToBase64(resized)
       setProgress('Analyzing your outfit...')
-      const result = await apiAnalyze(b64, occasion, vibe, gender)
+      const result = await apiAnalyze(b64, occasion, vibe, gender, T[lang]?.langInstruction || '')
       onResult({ result, imageUrl: img, occasion, vibe, gender, timestamp: Date.now() })
     } catch (e) {
       setErr(e.message || 'Analysis failed. Make sure your Vercel backend is deployed and BACKEND_URL is set correctly in App.jsx.')
