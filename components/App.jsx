@@ -208,7 +208,7 @@ const T = {
 
 const LangContext = createContext({ lang: 'en', t: T.en, setLang: () => {} })
 
-const BACKEND_URL = 'https://your-app.vercel.app' // ← Change this after deploying
+const BACKEND_URL = 'https://vogue-ai-gmj1.vercel.app' // ← Change this after deploying
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const CSS = `
