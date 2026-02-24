@@ -12,7 +12,7 @@ import { useState, useRef, useEffect } from 'react'
 // SETUP: Change BACKEND_URL below to your Vercel deployment URL
 // ═══════════════════════════════════════════════════════════════
 
-const BACKEND_URL = 'https://vogue-ai-gmj1.vercel.app' // ← Change this after deploying
+const BACKEND_URL = 'https://vogue-ai-gmj1.vercel.app/' // ← Change this after deploying
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const CSS = `
