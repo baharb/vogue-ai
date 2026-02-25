@@ -41,7 +41,7 @@ Respond with ONLY a raw JSON object. No markdown. No backticks. No explanation. 
             ]
           }],
           generationConfig: {
-            temperature: 0.5,
+            temperature: 0.4,
             maxOutputTokens: 8000
           }
         })
@@ -66,19 +66,31 @@ Respond with ONLY a raw JSON object. No markdown. No backticks. No explanation. 
       return Response.json({ error: 'AI returned empty response. Please try again.' }, { status: 500, headers: CORS })
     }
 
-    // Extract JSON — handles any extra text before/after
+    // Extract JSON — robust parsing
     let result
     try {
-      // Remove markdown if present
       const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-      // Find JSON object
       const start = clean.indexOf('{')
       const end = clean.lastIndexOf('}')
-      if (start === -1 || end === -1) throw new Error('No JSON braces found')
-      const jsonStr = clean.slice(start, end + 1)
-      result = JSON.parse(jsonStr)
+      if (start === -1 || end === -1) {
+        console.error('No JSON braces. Full text:', text)
+        throw new Error('No JSON found in response')
+      }
+      let jsonStr = clean.slice(start, end + 1)
+      // Fix truncated JSON by ensuring it ends properly
+      try {
+        result = JSON.parse(jsonStr)
+      } catch {
+        // Try to fix common truncation issues
+        jsonStr = jsonStr.replace(/,\s*$/, '').replace(/,\s*]/, ']').replace(/,\s*}/, '}')
+        // Count braces and close any open ones
+        const opens = (jsonStr.match(/{/g) || []).length
+        const closes = (jsonStr.match(/}/g) || []).length
+        for (let i = 0; i < opens - closes; i++) jsonStr += '}'
+        result = JSON.parse(jsonStr)
+      }
     } catch (parseError) {
-      console.error('JSON parse error:', parseError, 'Raw text:', text)
+      console.error('JSON parse error:', parseError.message, '\nRaw text:', text.slice(0, 500))
       return Response.json({ error: 'Could not parse AI response. Please try again.' }, { status: 500, headers: CORS })
     }
 
