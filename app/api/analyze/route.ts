@@ -18,15 +18,53 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'No image provided' }, { status: 400, headers: CORS })
     }
 
-    const prompt = `You are VOGUE — an elite AI fashion stylist. Analyze this outfit image.
+    // Language instruction — placed at TOP and BOTTOM for maximum effect
+    const langBlock = langInstruction
+      ? `🌐 LANGUAGE RULE (HIGHEST PRIORITY): ${langInstruction}
+You MUST write EVERY single text value in that language. This includes:
+- headline, stylist_note, style_archetype
+- every category "note" field
+- every improvement "item" and "action" field  
+- every item in "what_works" array
+- upgrade_tip
+DO NOT write any of these fields in English if a different language is requested.`
+      : ''
+
+    const prompt = `${langBlock}
+
+You are VOGUE — an elite AI fashion stylist. Analyze this outfit image.
 
 Context: Occasion="${occasion || 'Casual'}", Style="${vibe || 'any'}", Gender="${gender || 'any'}"
 
-${langInstruction ? `IMPORTANT: ${langInstruction} Write ALL text fields in that language: headline, stylist_note, style_archetype, all category notes, all improvement items and actions, all what_works items, and upgrade_tip.` : ''}
-
 Respond with ONLY a raw JSON object. No markdown. No backticks. No explanation. Just JSON starting with { and ending with }.
 
-{"overall_score":7.4,"headline":"One punchy sentence","stylist_note":"2-3 honest specific sentences about the actual items visible in the photo.","style_archetype":"Off-Duty Model","categories":[{"name":"Color Harmony","score":8.2,"note":"specific observation"},{"name":"Fit & Proportions","score":7.0,"note":"specific observation"},{"name":"Occasion Match","score":8.5,"note":"specific observation"},{"name":"Trend Awareness","score":6.8,"note":"specific observation"},{"name":"Accessories","score":7.2,"note":"specific observation"},{"name":"Fabric & Texture","score":7.5,"note":"specific observation"},{"name":"Overall Vibe","score":7.8,"note":"specific observation"}],"improvements":[{"priority":"high","item":"Item","action":"Fix"},{"priority":"medium","item":"Item","action":"Fix"},{"priority":"low","item":"Item","action":"Fix"}],"what_works":["Strength 1","Strength 2","Strength 3"],"trend_tags":["#tag1","#tag2","#tag3"],"upgrade_tip":"One power move","color_palette":["#8B7355","#2C2416","#C4A882"]}`
+Required JSON structure (ALL text values must be in the requested language):
+{
+  "overall_score": 7.4,
+  "headline": "One punchy sentence about the outfit",
+  "stylist_note": "2-3 honest specific sentences about the actual items visible in the photo",
+  "style_archetype": "Style name",
+  "categories": [
+    {"name": "Color Harmony", "score": 8.2, "note": "specific observation in requested language"},
+    {"name": "Fit & Proportions", "score": 7.0, "note": "specific observation in requested language"},
+    {"name": "Occasion Match", "score": 8.5, "note": "specific observation in requested language"},
+    {"name": "Trend Awareness", "score": 6.8, "note": "specific observation in requested language"},
+    {"name": "Accessories", "score": 7.2, "note": "specific observation in requested language"},
+    {"name": "Fabric & Texture", "score": 7.5, "note": "specific observation in requested language"},
+    {"name": "Overall Vibe", "score": 7.8, "note": "specific observation in requested language"}
+  ],
+  "improvements": [
+    {"priority": "high", "item": "item name in requested language", "action": "fix description in requested language"},
+    {"priority": "medium", "item": "item name in requested language", "action": "fix description in requested language"},
+    {"priority": "low", "item": "item name in requested language", "action": "fix description in requested language"}
+  ],
+  "what_works": ["strength 1 in requested language", "strength 2 in requested language", "strength 3 in requested language"],
+  "trend_tags": ["#tag1", "#tag2", "#tag3"],
+  "upgrade_tip": "one power move tip in requested language",
+  "color_palette": ["#8B7355", "#2C2416", "#C4A882"]
+}
+
+${langBlock}`
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -77,13 +115,10 @@ Respond with ONLY a raw JSON object. No markdown. No backticks. No explanation. 
         throw new Error('No JSON found in response')
       }
       let jsonStr = clean.slice(start, end + 1)
-      // Fix truncated JSON by ensuring it ends properly
       try {
         result = JSON.parse(jsonStr)
       } catch {
-        // Try to fix common truncation issues
         jsonStr = jsonStr.replace(/,\s*$/, '').replace(/,\s*]/, ']').replace(/,\s*}/, '}')
-        // Count braces and close any open ones
         const opens = (jsonStr.match(/{/g) || []).length
         const closes = (jsonStr.match(/}/g) || []).length
         for (let i = 0; i < opens - closes; i++) jsonStr += '}'
