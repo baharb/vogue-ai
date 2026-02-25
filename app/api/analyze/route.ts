@@ -42,7 +42,7 @@ Respond with ONLY a raw JSON object. No markdown. No backticks. No explanation. 
           }],
           generationConfig: {
             temperature: 0.5,
-            maxOutputTokens: 2000
+            maxOutputTokens: 8000
           }
         })
       }
