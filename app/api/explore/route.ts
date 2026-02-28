@@ -18,15 +18,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No question provided' }, { status: 400, headers: CORS })
     }
 
-    const prompt = `You are Trenxia, an elite fashion stylist and trend expert with encyclopedic knowledge of fashion history, current trends, styling rules, and body proportion theory.
-Answer this question with expert knowledge and real personality. Be specific, actionable, and opinionated — like a knowledgeable stylish friend.
-Give a thorough, complete answer. Write at least 3-5 full sentences. Never cut your answer short mid-sentence.
+    // Check API key exists
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: 'GEMINI_API_KEY not set on server' }, { status: 500, headers: CORS })
+    }
+
+    const prompt = `You are Trenxia, an elite fashion stylist. Answer this fashion question thoroughly and completely in at least 4-5 sentences. Never cut your answer short.
 ${langInstruction || 'Respond in English.'}
 
 Question: ${question}`
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -37,11 +41,12 @@ Question: ${question}`
       }
     )
 
+    // Return full Gemini error so we can see what's wrong
     if (!geminiRes.ok) {
-      const errBody = await geminiRes.json().catch(() => ({ status: geminiRes.status }))
-      console.error('Gemini explore error:', JSON.stringify(errBody))
+      const errBody = await geminiRes.text()
+      console.error('Gemini error status:', geminiRes.status, 'body:', errBody)
       return NextResponse.json(
-        { error: 'Explore failed', detail: errBody?.error?.message || `HTTP ${geminiRes.status}` },
+        { error: `Gemini error ${geminiRes.status}`, detail: errBody },
         { status: 500, headers: CORS }
       )
     }
@@ -50,14 +55,17 @@ Question: ${question}`
     const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
     if (!answer) {
-      console.error('Gemini explore: empty answer. Full response:', JSON.stringify(data))
-      return NextResponse.json({ error: 'Empty response from AI' }, { status: 500, headers: CORS })
+      return NextResponse.json(
+        { error: 'Empty answer from Gemini', detail: JSON.stringify(data) },
+        { status: 500, headers: CORS }
+      )
     }
 
     return NextResponse.json({ answer }, { headers: CORS })
 
   } catch (error) {
-    console.error('Explore error:', error)
-    return NextResponse.json({ error: 'Could not load answer.' }, { status: 500, headers: CORS })
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('Explore error:', msg)
+    return NextResponse.json({ error: 'Server exception', detail: msg }, { status: 500, headers: CORS })
   }
 }
