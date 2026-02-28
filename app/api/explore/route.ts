@@ -10,6 +10,31 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
 }
 
+// Trim text to the last complete sentence within maxChars.
+// Handles Latin, Persian/Arabic (؟ ۔), and CJK (。！？) sentence endings.
+// This guarantees the answer always ends cleanly — never mid-word or mid-sentence.
+function trimToLastSentence(text: string, maxChars = 1200): string {
+  if (text.length <= maxChars) return text
+  const chunk = text.slice(0, maxChars)
+  const lastEnd = Math.max(
+    chunk.lastIndexOf('.'),
+    chunk.lastIndexOf('!'),
+    chunk.lastIndexOf('?'),
+    chunk.lastIndexOf('؟'),   // Arabic/Persian question mark
+    chunk.lastIndexOf('۔'),   // Urdu/Persian full stop
+    chunk.lastIndexOf('。'),   // CJK full stop
+    chunk.lastIndexOf('！'),   // Full-width exclamation
+    chunk.lastIndexOf('？'),   // Full-width question mark
+  )
+  // Only cut at sentence boundary if it's not too close to the start
+  if (lastEnd > maxChars * 0.4) {
+    return chunk.slice(0, lastEnd + 1).trim()
+  }
+  // Fallback: cut at last space (word boundary)
+  const lastSpace = chunk.lastIndexOf(' ')
+  return chunk.slice(0, lastSpace > 0 ? lastSpace : maxChars).trim()
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { question, langInstruction } = await request.json()
@@ -24,12 +49,10 @@ export async function POST(request: NextRequest) {
     }
 
     const prompt = `You are Trenxia, an elite fashion stylist and trend expert.
-Answer this fashion question thoroughly. Write a complete answer — do not stop mid-sentence.
+Answer this fashion question with expert knowledge. Be specific and helpful.
 ${langInstruction || 'Respond in English.'}
 
-Question: ${question}
-
-Write your full answer now:`
+Question: ${question}`
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -40,7 +63,7 @@ Write your full answer now:`
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.8,
-            maxOutputTokens: 3000,  // High enough for Persian/Arabic/CJK which use more tokens
+            maxOutputTokens: 3000,
           }
         })
       }
@@ -56,22 +79,17 @@ Write your full answer now:`
     }
 
     const data = await geminiRes.json()
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    // Check if response was cut off due to token limit
-    const finishReason = data.candidates?.[0]?.finishReason
-    const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-    if (!answer) {
-      console.error('Empty Gemini explore response. Finish reason:', finishReason, JSON.stringify(data))
+    if (!raw) {
+      console.error('Empty Gemini explore response:', JSON.stringify(data))
       return NextResponse.json({ error: 'Empty response from AI' }, { status: 500, headers: CORS })
     }
 
-    // If cut off by max tokens, add ellipsis so frontend knows
-    const finalAnswer = (finishReason === 'MAX_TOKENS')
-      ? answer.trimEnd() + '…'
-      : answer
+    // Always return a clean, complete-sentence answer within 1200 chars
+    const answer = trimToLastSentence(raw, 1200)
 
-    return NextResponse.json({ answer: finalAnswer }, { headers: CORS })
+    return NextResponse.json({ answer }, { headers: CORS })
 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
