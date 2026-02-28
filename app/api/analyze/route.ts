@@ -127,8 +127,7 @@ All string values must be on a single line (no newlines inside strings).
           }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 2000,
-            // NO responseMimeType — causes issues with image+text input on Gemini 2.5
+            maxOutputTokens: 4000,
           }
         })
       }
