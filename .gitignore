@@ -1,0 +1,12 @@
+# CRITICAL: Never commit your API keys
+.env.local
+.env
+
+# Dependencies
+node_modules/
+.next/
+out/
+
+# System
+.DS_Store
+*.log
