@@ -1,11 +1,21 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS })
+}
 
 export async function POST(request: NextRequest) {
   try {
     const { message, context, history, langInstruction } = await request.json()
 
     if (!message) {
-      return Response.json({ error: 'No message provided' }, { status: 400 })
+      return NextResponse.json({ error: 'No message provided' }, { status: 400, headers: CORS })
     }
 
     const systemMsg = {
@@ -33,15 +43,22 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    if (!geminiRes.ok) return Response.json({ error: 'Chat failed' }, { status: 500 })
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.json().catch(() => ({ status: geminiRes.status }))
+      console.error('Gemini chat error:', JSON.stringify(errBody))
+      return NextResponse.json(
+        { error: 'Chat failed', detail: errBody?.error?.message || `HTTP ${geminiRes.status}` },
+        { status: 500, headers: CORS }
+      )
+    }
 
     const data = await geminiRes.json()
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    return Response.json({ reply })
+    return NextResponse.json({ reply }, { headers: CORS })
 
   } catch (error) {
     console.error('Chat error:', error)
-    return Response.json({ error: 'Chat failed. Try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'Chat failed. Try again.' }, { status: 500, headers: CORS })
   }
 }

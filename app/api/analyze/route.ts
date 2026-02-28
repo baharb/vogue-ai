@@ -1,11 +1,21 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS })
+}
 
 export async function POST(request: NextRequest) {
   try {
     const { imageBase64, occasion, vibe, gender, langInstruction } = await request.json()
 
     if (!imageBase64) {
-      return Response.json({ error: 'No image provided' }, { status: 400 })
+      return NextResponse.json({ error: 'No image provided' }, { status: 400, headers: CORS })
     }
 
     const prompt = `You are Trenxia — an elite AI fashion stylist with the sharp eye of a Vogue editor,
@@ -54,9 +64,9 @@ Respond ONLY with valid JSON, absolutely no markdown or extra text:
     )
 
     if (!geminiRes.ok) {
-      const err = await geminiRes.json()
-      console.error('Gemini error:', err)
-      return Response.json({ error: 'AI analysis failed. Please try again.' }, { status: 500 })
+      const err = await geminiRes.json().catch(() => ({}))
+      console.error('Gemini analyze error:', err)
+      return NextResponse.json({ error: 'AI analysis failed. Please try again.' }, { status: 500, headers: CORS })
     }
 
     const geminiData = await geminiRes.json()
@@ -64,10 +74,10 @@ Respond ONLY with valid JSON, absolutely no markdown or extra text:
     const clean = text.replace(/```json|```/g, '').trim()
     const result = JSON.parse(clean)
 
-    return Response.json({ result })
+    return NextResponse.json({ result }, { headers: CORS })
 
   } catch (error) {
     console.error('Analyze error:', error)
-    return Response.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: CORS })
   }
 }
