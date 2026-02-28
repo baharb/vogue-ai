@@ -1,212 +1,16 @@
 'use client'
 
-import { useState, useRef, useEffect, createContext, useContext } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // ═══════════════════════════════════════════════════════════════
 // VOGUE AI — Elite Fashion Stylist App
 // - Calls your Vercel backend (Gemini key hidden on server)
 // - Users never see or enter any API key
 // - Persistent storage (history & profile survive refresh)
-// - Multi-language support: EN, FA, ES, FR, ZH, JA, AR
+// - Sign-in commented out — uncomment when ready
+//
+// SETUP: Change BACKEND_URL below to your Vercel deployment URL
 // ═══════════════════════════════════════════════════════════════
-
-// ─── LANGUAGE SYSTEM ─────────────────────────────────────────────────────────
-const LANGUAGES = [
-  { code: 'en', label: 'EN', name: 'English', dir: 'ltr' },
-  { code: 'fa', label: 'FA', name: 'فارسی', dir: 'rtl' },
-  { code: 'es', label: 'ES', name: 'Español', dir: 'ltr' },
-  { code: 'fr', label: 'FR', name: 'Français', dir: 'ltr' },
-  { code: 'zh', label: 'ZH', name: '中文', dir: 'ltr' },
-  { code: 'ja', label: 'JA', name: '日本語', dir: 'ltr' },
-  { code: 'ar', label: 'AR', name: 'العربية', dir: 'rtl' },
-]
-
-const T = {
-  en: {
-    appName: 'VOGUE AI', loading: 'Loading VOGUE AI...', back: '← Back',
-    rate: 'Rate', wardrobe: 'Wardrobe', explore: 'Explore', profile: 'Profile',
-    rateTitle: 'Rate My', rateGold: 'Outfit', rateSubtitle: 'Upload a photo for instant AI analysis',
-    uploadTitle: 'Upload Your Outfit', uploadSub: 'Mirror selfie or full-body photo\nNatural lighting works best',
-    takePhoto: 'Take Photo', changePhoto: 'Change Photo',
-    occasion: 'Occasion', styleVibe: 'Style Vibe', gender: 'Gender',
-    analyze: '✦ Analyze My Outfit', step: 'Step',
-    overview: 'Overview', improve: 'Improve', askStylist: 'Ask Stylist',
-    whatWorks: "✓ What's Working", powerMove: '⚡ Power Move',
-    saveLook: 'Save Look', saved: '✓ Saved!', rateAnother: 'Rate Another',
-    wardrobeTitle: 'My', wardrobeGold: 'Wardrobe', wardrobeSub: 'Saved looks & style history',
-    noLooks: 'No saved looks yet', noLooksSub: 'Rate an outfit and save it\nto build your wardrobe',
-    exploreTitle: 'Style', exploreGold: 'Explore', exploreSub: 'Ask your AI stylist anything',
-    askPlaceholder: 'Ask any fashion question...', ask: 'Ask',
-    profileTitle: 'Style', profileGold: 'DNA', profileSub: 'Your fashion identity',
-    edit: 'Edit', save: 'Save', styleReport: '✦ Your Style Report', bestLook: '🏆 Your Best Look',
-    chatPlaceholder: 'Ask your stylist anything...', thinking: 'Thinking...',
-    outfitsRated: 'Outfits Rated', avgScore: 'Avg Score', topArchetype: 'Top Archetype', favOccasion: 'Fav Occasion',
-    sort: 'Sort:', latest: 'Latest', topScore: 'Top Score',
-    startBtn: '✦ Start Styling — Free', noSignIn: 'No sign-in required to start',
-    detectedPalette: 'Detected palette:', styleArchetype: 'Style Archetype',
-    improvementsIntro: 'Exact changes, in priority order:',
-    outfits: 'Outfits', avg: 'Avg Score', best: 'Best',
-    langInstruction: 'Respond in English.',
-  },
-  fa: {
-    appName: 'VOGUE AI', loading: 'در حال بارگذاری...', back: '→ بازگشت',
-    rate: 'ارزیابی', wardrobe: 'کمد لباس', explore: 'کاوش', profile: 'پروفایل',
-    rateTitle: 'ارزیابی', rateGold: 'استایل', rateSubtitle: 'عکس آپلود کن برای تحلیل فوری',
-    uploadTitle: 'عکس استایلت را آپلود کن', uploadSub: 'سلفی جلوی آینه یا عکس تمام قد\nنور طبیعی بهترین نتیجه را می‌دهد',
-    takePhoto: 'عکس بگیر', changePhoto: 'تغییر عکس',
-    occasion: 'مناسبت', styleVibe: 'سبک', gender: 'جنسیت',
-    analyze: '✦ تحلیل استایل من', step: 'مرحله',
-    overview: 'مرور کلی', improve: 'بهبود', askStylist: 'سوال از استایلیست',
-    whatWorks: '✓ چه چیزی خوب است', powerMove: '⚡ حرکت قدرتمند',
-    saveLook: 'ذخیره لوک', saved: '✓ ذخیره شد!', rateAnother: 'ارزیابی جدید',
-    wardrobeTitle: 'کمد', wardrobeGold: 'لباس', wardrobeSub: 'لوک‌های ذخیره شده',
-    noLooks: 'هنوز لوکی ذخیره نشده', noLooksSub: 'یک استایل ارزیابی کن و ذخیره کن',
-    exploreTitle: 'کاوش', exploreGold: 'استایل', exploreSub: 'هر سوال مد و فشن بپرس',
-    askPlaceholder: 'سوالت را بنویس...', ask: 'بپرس',
-    profileTitle: 'هویت', profileGold: 'استایل', profileSub: 'شناسنامه فشن تو',
-    edit: 'ویرایش', save: 'ذخیره', styleReport: '✦ گزارش استایل', bestLook: '🏆 بهترین لوک',
-    chatPlaceholder: 'هر چیزی از استایلیست بپرس...', thinking: 'در حال فکر...',
-    outfitsRated: 'ارزیابی شده', avgScore: 'میانگین', topArchetype: 'سبک اصلی', favOccasion: 'مناسبت برتر',
-    sort: 'مرتب‌سازی:', latest: 'جدیدترین', topScore: 'بالاترین امتیاز',
-    startBtn: '✦ شروع رایگان', noSignIn: 'بدون نیاز به ورود',
-    detectedPalette: 'رنگ‌بندی:', styleArchetype: 'تیپ استایل',
-    improvementsIntro: 'تغییرات دقیق، به ترتیب اولویت:',
-    outfits: 'استایل', avg: 'میانگین', best: 'بهترین',
-    langInstruction: 'لطفاً به فارسی پاسخ بده.',
-  },
-  es: {
-    appName: 'VOGUE AI', loading: 'Cargando VOGUE AI...', back: '← Volver',
-    rate: 'Valorar', wardrobe: 'Armario', explore: 'Explorar', profile: 'Perfil',
-    rateTitle: 'Valorar mi', rateGold: 'Outfit', rateSubtitle: 'Sube una foto para análisis instantáneo',
-    uploadTitle: 'Sube tu outfit', uploadSub: 'Selfie frente al espejo o foto de cuerpo entero\nMejor con luz natural',
-    takePhoto: 'Tomar foto', changePhoto: 'Cambiar foto',
-    occasion: 'Ocasión', styleVibe: 'Estilo', gender: 'Género',
-    analyze: '✦ Analizar mi outfit', step: 'Paso',
-    overview: 'Resumen', improve: 'Mejorar', askStylist: 'Preguntar',
-    whatWorks: '✓ Lo que funciona', powerMove: '⚡ Movimiento clave',
-    saveLook: 'Guardar look', saved: '✓ Guardado!', rateAnother: 'Otro outfit',
-    wardrobeTitle: 'Mi', wardrobeGold: 'Armario', wardrobeSub: 'Looks guardados',
-    noLooks: 'Sin looks guardados', noLooksSub: 'Valora un outfit y guárdalo',
-    exploreTitle: 'Explorar', exploreGold: 'Estilo', exploreSub: 'Pregunta lo que quieras',
-    askPlaceholder: 'Pregunta sobre moda...', ask: 'Preguntar',
-    profileTitle: 'ADN de', profileGold: 'Estilo', profileSub: 'Tu identidad de moda',
-    edit: 'Editar', save: 'Guardar', styleReport: '✦ Tu informe de estilo', bestLook: '🏆 Tu mejor look',
-    chatPlaceholder: 'Pregunta a tu estilista...', thinking: 'Pensando...',
-    outfitsRated: 'Outfits', avgScore: 'Promedio', topArchetype: 'Arquetipo', favOccasion: 'Ocasión fav',
-    sort: 'Ordenar:', latest: 'Recientes', topScore: 'Mejor puntuación',
-    startBtn: '✦ Empezar gratis', noSignIn: 'Sin registro necesario',
-    detectedPalette: 'Paleta detectada:', styleArchetype: 'Arquetipo de estilo',
-    improvementsIntro: 'Cambios exactos, por orden de prioridad:',
-    outfits: 'Outfits', avg: 'Promedio', best: 'Mejor',
-    langInstruction: 'Responde en español.',
-  },
-  fr: {
-    appName: 'VOGUE AI', loading: 'Chargement de VOGUE AI...', back: '← Retour',
-    rate: 'Évaluer', wardrobe: 'Garde-robe', explore: 'Explorer', profile: 'Profil',
-    rateTitle: 'Évaluer ma', rateGold: 'Tenue', rateSubtitle: 'Télécharge une photo pour une analyse instantanée',
-    uploadTitle: 'Télécharge ta tenue', uploadSub: 'Selfie devant miroir ou photo en pied\nMeilleur avec lumière naturelle',
-    takePhoto: 'Prendre photo', changePhoto: 'Changer la photo',
-    occasion: 'Occasion', styleVibe: 'Style', gender: 'Genre',
-    analyze: '✦ Analyser ma tenue', step: 'Étape',
-    overview: 'Aperçu', improve: 'Améliorer', askStylist: 'Demander',
-    whatWorks: '✓ Ce qui fonctionne', powerMove: '⚡ Conseil clé',
-    saveLook: 'Sauvegarder', saved: '✓ Sauvegardé!', rateAnother: 'Autre tenue',
-    wardrobeTitle: 'Ma', wardrobeGold: 'Garde-robe', wardrobeSub: 'Looks sauvegardés',
-    noLooks: 'Aucun look sauvegardé', noLooksSub: 'Évalue une tenue et sauvegarde-la',
-    exploreTitle: 'Explorer', exploreGold: 'le Style', exploreSub: 'Pose toutes tes questions mode',
-    askPlaceholder: 'Une question sur la mode...', ask: 'Demander',
-    profileTitle: 'ADN de', profileGold: 'Style', profileSub: 'Ton identité mode',
-    edit: 'Modifier', save: 'Sauvegarder', styleReport: '✦ Ton rapport de style', bestLook: '🏆 Ton meilleur look',
-    chatPlaceholder: 'Demande à ton styliste...', thinking: 'Réflexion...',
-    outfitsRated: 'Tenues', avgScore: 'Moyenne', topArchetype: 'Archétype', favOccasion: 'Occasion fav',
-    sort: 'Trier:', latest: 'Récents', topScore: 'Meilleur score',
-    startBtn: '✦ Commencer gratuitement', noSignIn: 'Sans inscription',
-    detectedPalette: 'Palette détectée:', styleArchetype: 'Archétype de style',
-    improvementsIntro: 'Changements précis, par ordre de priorité:',
-    outfits: 'Tenues', avg: 'Moyenne', best: 'Meilleur',
-    langInstruction: 'Réponds en français.',
-  },
-  zh: {
-    appName: 'VOGUE AI', loading: '加载中...', back: '← 返回',
-    rate: '评分', wardrobe: '衣橱', explore: '探索', profile: '个人',
-    rateTitle: '评价我的', rateGold: '穿搭', rateSubtitle: '上传照片获取即时AI分析',
-    uploadTitle: '上传你的穿搭', uploadSub: '镜子自拍或全身照\n自然光效果最佳',
-    takePhoto: '拍照', changePhoto: '更换照片',
-    occasion: '场合', styleVibe: '风格', gender: '性别',
-    analyze: '✦ 分析我的穿搭', step: '步骤',
-    overview: '总览', improve: '改进', askStylist: '咨询造型师',
-    whatWorks: '✓ 优点', powerMove: '⚡ 关键建议',
-    saveLook: '保存造型', saved: '✓ 已保存!', rateAnother: '评价新造型',
-    wardrobeTitle: '我的', wardrobeGold: '衣橱', wardrobeSub: '保存的造型记录',
-    noLooks: '还没有保存的造型', noLooksSub: '评价一个造型并保存它',
-    exploreTitle: '时尚', exploreGold: '探索', exploreSub: '向AI造型师提问任何时尚问题',
-    askPlaceholder: '提问任何时尚问题...', ask: '提问',
-    profileTitle: '风格', profileGold: '基因', profileSub: '你的时尚身份',
-    edit: '编辑', save: '保存', styleReport: '✦ 你的风格报告', bestLook: '🏆 你的最佳造型',
-    chatPlaceholder: '向造型师提问...', thinking: '思考中...',
-    outfitsRated: '已评分', avgScore: '平均分', topArchetype: '主要风格', favOccasion: '常见场合',
-    sort: '排序:', latest: '最新', topScore: '最高分',
-    startBtn: '✦ 免费开始', noSignIn: '无需注册',
-    detectedPalette: '检测到的色调:', styleArchetype: '风格原型',
-    improvementsIntro: '具体改进建议，按优先级排列:',
-    outfits: '造型', avg: '平均', best: '最佳',
-    langInstruction: '请用中文回答。',
-  },
-  ja: {
-    appName: 'VOGUE AI', loading: '読み込み中...', back: '← 戻る',
-    rate: '評価', wardrobe: 'ワードローブ', explore: '探索', profile: 'プロフィール',
-    rateTitle: 'コーデを', rateGold: '評価', rateSubtitle: '写真をアップして即時AI分析',
-    uploadTitle: 'コーデをアップロード', uploadSub: '鏡の前のセルフィーまたは全身写真\n自然光が最も効果的',
-    takePhoto: '写真を撮る', changePhoto: '写真を変更',
-    occasion: 'シーン', styleVibe: 'スタイル', gender: '性別',
-    analyze: '✦ コーデを分析する', step: 'ステップ',
-    overview: '概要', improve: '改善', askStylist: 'スタイリストに聞く',
-    whatWorks: '✓ 良い点', powerMove: '⚡ 重要なアドバイス',
-    saveLook: '保存', saved: '✓ 保存済み!', rateAnother: '別のコーデ',
-    wardrobeTitle: 'マイ', wardrobeGold: 'ワードローブ', wardrobeSub: '保存したコーデ',
-    noLooks: 'まだ保存したコーデがありません', noLooksSub: 'コーデを評価して保存しましょう',
-    exploreTitle: 'ファッション', exploreGold: '探索', exploreSub: 'AIスタイリストに何でも聞いて',
-    askPlaceholder: 'ファッションの質問を入力...', ask: '質問する',
-    profileTitle: 'スタイル', profileGold: 'DNA', profileSub: 'あなたのファッションアイデンティティ',
-    edit: '編集', save: '保存', styleReport: '✦ スタイルレポート', bestLook: '🏆 ベストコーデ',
-    chatPlaceholder: 'スタイリストに質問...', thinking: '考え中...',
-    outfitsRated: '評価済み', avgScore: '平均点', topArchetype: 'メインスタイル', favOccasion: 'よく使うシーン',
-    sort: '並び替え:', latest: '最新', topScore: '高評価順',
-    startBtn: '✦ 無料で始める', noSignIn: '登録不要',
-    detectedPalette: '検出カラー:', styleArchetype: 'スタイルアーキタイプ',
-    improvementsIntro: '優先順位の高い改善点:',
-    outfits: 'コーデ', avg: '平均', best: 'ベスト',
-    langInstruction: '日本語で答えてください。',
-  },
-  ar: {
-    appName: 'VOGUE AI', loading: 'جارٍ التحميل...', back: 'رجوع →',
-    rate: 'تقييم', wardrobe: 'خزانة الملابس', explore: 'استكشاف', profile: 'الملف',
-    rateTitle: 'قيّم', rateGold: 'إطلالتي', rateSubtitle: 'ارفع صورة للحصول على تحليل فوري',
-    uploadTitle: 'ارفع صورة إطلالتك', uploadSub: 'سيلفي أمام المرآة أو صورة كاملة\nالإضاءة الطبيعية الأفضل',
-    takePhoto: 'التقط صورة', changePhoto: 'تغيير الصورة',
-    occasion: 'المناسبة', styleVibe: 'الأسلوب', gender: 'الجنس',
-    analyze: '✦ حلّل إطلالتي', step: 'خطوة',
-    overview: 'نظرة عامة', improve: 'تحسين', askStylist: 'اسأل المصمم',
-    whatWorks: '✓ ما يعمل بشكل جيد', powerMove: '⚡ النصيحة الذهبية',
-    saveLook: 'حفظ الإطلالة', saved: '✓ تم الحفظ!', rateAnother: 'إطلالة أخرى',
-    wardrobeTitle: 'خزانة', wardrobeGold: 'ملابسي', wardrobeSub: 'الإطلالات المحفوظة',
-    noLooks: 'لا توجد إطلالات محفوظة', noLooksSub: 'قيّم إطلالة واحفظها',
-    exploreTitle: 'استكشاف', exploreGold: 'الأزياء', exploreSub: 'اسأل مصممك عن أي شيء',
-    askPlaceholder: 'اكتب سؤالك عن الموضة...', ask: 'اسأل',
-    profileTitle: 'هوية', profileGold: 'أسلوبك', profileSub: 'شخصيتك في الموضة',
-    edit: 'تعديل', save: 'حفظ', styleReport: '✦ تقرير أسلوبك', bestLook: '🏆 أفضل إطلالة',
-    chatPlaceholder: 'اسأل مصممك أي شيء...', thinking: 'أفكر...',
-    outfitsRated: 'إطلالات', avgScore: 'المتوسط', topArchetype: 'الأسلوب الرئيسي', favOccasion: 'المناسبة المفضلة',
-    sort: 'ترتيب:', latest: 'الأحدث', topScore: 'الأعلى تقييماً',
-    startBtn: '✦ ابدأ مجاناً', noSignIn: 'بدون تسجيل',
-    detectedPalette: 'لوحة الألوان:', styleArchetype: 'نمط الأسلوب',
-    improvementsIntro: 'تغييرات محددة، بترتيب الأولوية:',
-    outfits: 'إطلالات', avg: 'متوسط', best: 'أفضل',
-    langInstruction: 'أجب باللغة العربية.',
-  },
-}
-
-const LangContext = createContext({ lang: 'en', t: T.en, setLang: () => {} })
 
 const BACKEND_URL = 'https://your-app.vercel.app' // ← Change this after deploying
 
@@ -356,11 +160,11 @@ async function storageSet(key, val) {
 // ─── API CALLS → YOUR VERCEL BACKEND ─────────────────────────────────────────
 // Key is hidden on your server — users never see it
 
-async function apiAnalyze(imageBase64, occasion, vibe, gender, langInstruction = '') {
+async function apiAnalyze(imageBase64, occasion, vibe, gender) {
   const res = await fetch(`${BACKEND_URL}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64, occasion, vibe, gender, langInstruction })
+    body: JSON.stringify({ imageBase64, occasion, vibe, gender })
   })
   if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed') }
   const data = await res.json()
@@ -466,49 +270,14 @@ function ProgBar({ value }) {
   return <div className="prog"><div className="prog-f" style={{ width: `${value * 10}%`, background: scoreColor(value) }} /></div>
 }
 
-function LangPicker() {
-  const { lang, setLang } = useContext(LangContext)
-  const [open, setOpen] = useState(false)
-  const current = LANGUAGES.find(l => l.code === lang)
-  return (
-    <div style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)}
-        style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border)', borderRadius: 3, padding: '5px 10px', color: 'var(--gold)', cursor: 'pointer', fontSize: 11, fontFamily: "'Jost',sans-serif", fontWeight: 600, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-        🌐 {current?.label} <span style={{ fontSize: 8, opacity: .6 }}>▼</span>
-      </button>
-      {open && (
-        <>
-          {/* backdrop to close on outside click */}
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 997 }} />
-          <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#1a1612', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', zIndex: 998, minWidth: 150, boxShadow: '0 12px 40px rgba(0,0,0,.8)' }}>
-            <div style={{ padding: '8px 14px 6px', fontSize: 9, color: 'var(--muted)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>Language</div>
-            {LANGUAGES.map(l => (
-              <button key={l.code} onClick={() => { setLang(l.code); setOpen(false) }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: lang === l.code ? 'rgba(200,169,110,.12)' : 'none', border: 'none', borderBottom: '1px solid rgba(255,255,255,.03)', color: lang === l.code ? 'var(--gold)' : 'var(--cream)', cursor: 'pointer', fontSize: 13, fontFamily: "'Jost',sans-serif", textAlign: 'left', transition: 'background .15s' }}>
-                <span style={{ fontSize: 10, opacity: .5, minWidth: 22, fontWeight: 700 }}>{l.label}</span>
-                <span style={{ direction: l.dir }}>{l.name}</span>
-                {lang === l.code && <span style={{ marginLeft: 'auto', color: 'var(--gold)', fontSize: 12 }}>✓</span>}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 function TopBar({ showBack, onBack }) {
-  const { t } = useContext(LangContext)
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, background: 'rgba(10,8,6,.92)', backdropFilter: 'blur(24px)', borderBottom: '1px solid var(--border)', padding: '13px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg,var(--gold),var(--gold2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>✦</div>
         <span className="serif" style={{ fontSize: 17, letterSpacing: -.3 }}>VOGUE <span className="italic" style={{ color: 'var(--gold)' }}>AI</span></span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {showBack && <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, fontFamily: "'Jost',sans-serif" }}>{t.back}</button>}
-        <LangPicker />
-      </div>
+      {showBack && <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, fontFamily: "'Jost',sans-serif" }}>← Back</button>}
     </div>
   )
 }
@@ -580,7 +349,6 @@ function WelcomeScreen({ onStart }) {
 
 // ─── RATE SCREEN ──────────────────────────────────────────────────────────────
 function RateScreen({ onResult, savedVibe }) {
-  const { t, lang } = useContext(LangContext)
   const [img, setImg] = useState(null)
   const [file, setFile] = useState(null)
   const [occasion, setOccasion] = useState('Casual')
@@ -609,7 +377,7 @@ function RateScreen({ onResult, savedVibe }) {
       setProgress('Sending to AI stylist...')
       const b64 = await fileToBase64(resized)
       setProgress('Analyzing your outfit...')
-      const result = await apiAnalyze(b64, occasion, vibe, gender, T[lang]?.langInstruction || '')
+      const result = await apiAnalyze(b64, occasion, vibe, gender)
       onResult({ result, imageUrl: img, occasion, vibe, gender, timestamp: Date.now() })
     } catch (e) {
       setErr(e.message || 'Analysis failed. Make sure your Vercel backend is deployed and BACKEND_URL is set correctly in App.jsx.')
@@ -712,8 +480,6 @@ function RateScreen({ onResult, savedVibe }) {
 // ─── RESULTS SCREEN ───────────────────────────────────────────────────────────
 function ResultsScreen({ data, onSave, onNew }) {
   const { result, imageUrl, occasion } = data
-  const { t, lang } = useContext(LangContext)
-  const langInstruction = T[lang]?.langInstruction || T.en.langInstruction
   const [tab, setTab] = useState('overview')
   const [saved, setSaved] = useState(false)
   const pCol = { high: 'var(--red)', medium: 'var(--gold)', low: 'var(--green)' }
@@ -756,7 +522,7 @@ function ResultsScreen({ data, onSave, onNew }) {
         )}
 
         <div className="tabs" style={{ marginBottom: 20 }}>
-          {[['overview', t.overview], ['improve', t.improve], ['chat', t.askStylist]].map(([id, label]) => (
+          {[['overview', 'Overview'], ['improve', 'Improve'], ['chat', 'Ask Stylist']].map(([id, label]) => (
             <button key={id} className={`tab ${tab === id ? 'on' : ''}`} onClick={() => setTab(id)}>{label}</button>
           ))}
         </div>
@@ -775,7 +541,7 @@ function ResultsScreen({ data, onSave, onNew }) {
             ))}
             <div className="div" />
             <div className="card" style={{ borderColor: 'rgba(107,158,120,.22)', background: 'rgba(107,158,120,.05)', marginBottom: 14 }}>
-              <div style={{ fontSize: 10, color: 'var(--green)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12, fontWeight: 600 }}>{t.whatWorks}</div>
+              <div style={{ fontSize: 10, color: 'var(--green)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12, fontWeight: 600 }}>✓ What's Working</div>
               {result.what_works?.map((w, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', borderTop: i > 0 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
                   <span style={{ color: 'var(--green)' }}>→</span>
@@ -784,7 +550,7 @@ function ResultsScreen({ data, onSave, onNew }) {
               ))}
             </div>
             <div className="card" style={{ borderColor: 'rgba(200,169,110,.25)', background: 'rgba(200,169,110,.04)' }}>
-              <div style={{ fontSize: 10, color: 'var(--gold)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontWeight: 600 }}>{t.powerMove}</div>
+              <div style={{ fontSize: 10, color: 'var(--gold)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontWeight: 600 }}>⚡ Power Move</div>
               <p style={{ fontSize: 14, color: 'var(--cream)', lineHeight: 1.7 }}>{result.upgrade_tip}</p>
             </div>
           </div>
@@ -792,7 +558,7 @@ function ResultsScreen({ data, onSave, onNew }) {
 
         {tab === 'improve' && (
           <div className="as">
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18, lineHeight: 1.6 }}>{t.improvementsIntro}</p>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18, lineHeight: 1.6 }}>Exact changes, in priority order:</p>
             {result.improvements?.map((imp, i) => (
               <div key={i} className={`card p${imp.priority[0]}`} style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
@@ -805,12 +571,12 @@ function ResultsScreen({ data, onSave, onNew }) {
           </div>
         )}
 
-        {tab === 'chat' && <ChatPanel result={result} occasion={occasion} langInstruction={langInstruction} />}
+        {tab === 'chat' && <ChatPanel result={result} occasion={occasion} />}
 
         <div className="div" />
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn-o" onClick={() => { onSave(data); setSaved(true) }} style={{ flex: 1, fontSize: 12 }}>{saved ? t.saved : t.saveLook}</button>
-          <button className="btn" onClick={onNew} style={{ flex: 1, fontSize: 12 }}>{t.rateAnother}</button>
+          <button className="btn-o" onClick={() => { onSave(data); setSaved(true) }} style={{ flex: 1, fontSize: 12 }}>{saved ? '✓ Saved!' : 'Save Look'}</button>
+          <button className="btn" onClick={onNew} style={{ flex: 1, fontSize: 12 }}>Rate Another</button>
         </div>
       </div>
     </div>
@@ -818,9 +584,8 @@ function ResultsScreen({ data, onSave, onNew }) {
 }
 
 // ─── CHAT PANEL ───────────────────────────────────────────────────────────────
-function ChatPanel({ result, occasion, langInstruction }) {
-  const { t } = useContext(LangContext)
-  const [msgs, setMsgs] = useState([{ role: 'stylist', text: `${result.overall_score.toFixed(1)}/10. ${result.headline}` }])
+function ChatPanel({ result, occasion }) {
+  const [msgs, setMsgs] = useState([{ role: 'stylist', text: `I just scored your ${occasion} look a ${result.overall_score.toFixed(1)}/10. Ask me anything about this outfit.` }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const endRef = useRef()
@@ -834,14 +599,7 @@ function ChatPanel({ result, occasion, langInstruction }) {
     setMsgs(newMsgs)
     setLoading(true)
     try {
-      const ctx = `Score: ${result.overall_score}/10, Archetype: ${result.style_archetype}, Occasion: ${occasion}
-Headline: ${result.headline}
-Stylist note: ${result.stylist_note}
-What works: ${result.what_works?.join(', ')}
-Improvements: ${result.improvements?.map(i => i.item + ': ' + i.action).join('; ')}
-Categories: ${result.categories?.map(c => c.name + ' ' + c.score + '/10 — ' + c.note).join('; ')}
-Upgrade tip: ${result.upgrade_tip}
-${langInstruction}`
+      const ctx = `Score: ${result.overall_score}/10, Archetype: ${result.style_archetype}, Occasion: ${occasion}`
       const reply = await apiChat(q, ctx, msgs)
       setMsgs(m => [...m, { role: 'stylist', text: reply }])
     } catch {
@@ -866,13 +624,13 @@ ${langInstruction}`
         {loading && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,var(--gold),var(--gold2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>✦</div>
-            <div className="pulse" style={{ fontSize: 13, color: 'var(--muted)' }}>{t.thinking}</div>
+            <div className="pulse" style={{ fontSize: 13, color: 'var(--muted)' }}>Thinking...</div>
           </div>
         )}
         <div ref={endRef} />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <input className="inp" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !loading && send()} placeholder={t.chatPlaceholder} style={{ flex: 1 }} />
+        <input className="inp" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !loading && send()} placeholder="Ask your stylist anything..." style={{ flex: 1 }} />
         <button className="btn" onClick={() => send()} disabled={loading} style={{ padding: '12px 18px', fontSize: 13 }}>→</button>
       </div>
     </div>
@@ -947,8 +705,6 @@ function WardrobeScreen({ history, onView }) {
 
 // ─── EXPLORE SCREEN ───────────────────────────────────────────────────────────
 function ExploreScreen() {
-  const { t, lang } = useContext(LangContext)
-  const langInstruction = T[lang]?.langInstruction || T.en.langInstruction
   const [q, setQ] = useState('')
   const [answer, setAnswer] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -968,7 +724,7 @@ function ExploreScreen() {
     if (!txt) return
     setLoading(true); setAnswer(null)
     try {
-      const res = await apiExplore(txt + '\n\n' + langInstruction)
+      const res = await apiExplore(txt)
       setAnswer({ q: txt, a: res })
     } catch { setAnswer({ q: txt, a: 'Could not load response. Please try again.' }) }
     setLoading(false)
@@ -980,8 +736,8 @@ function ExploreScreen() {
         <h2 className="serif" style={{ fontSize: 30, marginBottom: 4 }}>Style <span className="italic" style={{ color: 'var(--gold)' }}>Explore</span></h2>
         <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 24 }}>Ask your AI stylist anything</p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          <input className="inp" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder={t.askPlaceholder} />
-          <button className="btn" onClick={() => ask()} style={{ padding: '12px 18px', fontSize: 13, flexShrink: 0 }}>{t.ask}</button>
+          <input className="inp" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Ask any fashion question..." />
+          <button className="btn" onClick={() => ask()} style={{ padding: '12px 18px', fontSize: 13, flexShrink: 0 }}>Ask</button>
         </div>
         {loading && (
           <div className="card" style={{ textAlign: 'center', padding: 36, marginBottom: 24 }}>
@@ -1125,27 +881,17 @@ export default function App() {
   const [showResult, setShowResult] = useState(false)
   const [history, setHistory] = useState([])
   const [profile, setProfile] = useState({ name: '', styleVibe: '' })
-  const [lang, setLang] = useState('en')
-  const t = T[lang] || T.en
 
   useEffect(() => {
     (async () => {
       try {
-        const [h, p, l] = await Promise.all([storageGet('vogue_history'), storageGet('vogue_profile'), storageGet('vogue_lang')])
+        const [h, p] = await Promise.all([storageGet('vogue_history'), storageGet('vogue_profile')])
         if (h) setHistory(h)
         if (p) setProfile(p)
-        if (l) setLang(l)
       } catch {}
       setAppState('welcome')
     })()
   }, [])
-
-  const handleLang = async code => {
-    setLang(code)
-    await storageSet('vogue_lang', code)
-    // Apply RTL direction for Arabic and Persian
-    document.documentElement.dir = (code === 'ar' || code === 'fa') ? 'rtl' : 'ltr'
-  }
 
   const handleResult = data => { setCurrentResult(data); setShowResult(true) }
   const handleSaveLook = async data => { const n = [data, ...history].slice(0, 50); setHistory(n); await storageSet('vogue_history', n) }
@@ -1166,27 +912,25 @@ export default function App() {
   }
 
   return (
-    <LangContext.Provider value={{ lang, t, setLang: handleLang }}>
-      <div className="app">
-        <style>{CSS}</style>
-        {appState === 'welcome' && <WelcomeScreen onStart={() => setAppState('main')} />}
-        {appState === 'main' && (
-          <>
-            {showResult && currentResult ? (
-              <><TopBar showBack onBack={handleNewOutfit} /><ResultsScreen data={currentResult} onSave={handleSaveLook} onNew={handleNewOutfit} /></>
-            ) : (
-              <>
-                <TopBar />
-                {tab === 'rate' && <RateScreen onResult={handleResult} savedVibe={profile.styleVibe} />}
-                {tab === 'wardrobe' && <WardrobeScreen history={history} onView={handleViewLook} />}
-                {tab === 'explore' && <ExploreScreen />}
-                {tab === 'profile' && <ProfileScreen history={history} profile={profile} onSaveProfile={handleSaveProfile} />}
-                <BottomNav active={tab} onChange={setTab} />
-              </>
-            )}
-          </>
-        )}
-      </div>
-    </LangContext.Provider>
+    <div className="app">
+      <style>{CSS}</style>
+      {appState === 'welcome' && <WelcomeScreen onStart={() => setAppState('main')} />}
+      {appState === 'main' && (
+        <>
+          {showResult && currentResult ? (
+            <><TopBar showBack onBack={handleNewOutfit} /><ResultsScreen data={currentResult} onSave={handleSaveLook} onNew={handleNewOutfit} /></>
+          ) : (
+            <>
+              <TopBar />
+              {tab === 'rate' && <RateScreen onResult={handleResult} savedVibe={profile.styleVibe} />}
+              {tab === 'wardrobe' && <WardrobeScreen history={history} onView={handleViewLook} />}
+              {tab === 'explore' && <ExploreScreen />}
+              {tab === 'profile' && <ProfileScreen history={history} profile={profile} onSaveProfile={handleSaveProfile} />}
+              <BottomNav active={tab} onChange={setTab} />
+            </>
+          )}
+        </>
+      )}
+    </div>
   )
 }
