@@ -10,8 +10,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
 }
 
-// Robustly extract JSON from Gemini response which may include markdown fences,
-// extra text before/after, or be truncated mid-string by token limit.
 function extractJSON(raw: string): object {
   // Strip markdown fences
   let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
@@ -19,43 +17,59 @@ function extractJSON(raw: string): object {
   // Find outermost { }
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
-  if (start === -1) throw new Error('No JSON object found in response')
 
-  // If no closing brace (truncated), close it manually
-  const slice = end !== -1 ? text.slice(start, end + 1) : text.slice(start)
+  if (start === -1) throw new Error('No JSON object found')
 
-  // Try clean parse first
-  try {
-    return JSON.parse(slice)
-  } catch (_) {}
+  // Use full slice if we have closing brace, otherwise try to close it
+  let slice = end > start ? text.slice(start, end + 1) : text.slice(start)
 
-  // Gemini 2.5 sometimes returns unescaped newlines inside string values.
-  // Replace literal newlines inside strings with \n escape.
-  const fixed = slice
-    .replace(/[\r\n]+/g, ' ')   // flatten real newlines
-    .replace(/\t/g, ' ')         // flatten tabs
-    .replace(/,\s*}/g, '}')      // trailing commas before }
-    .replace(/,\s*]/g, ']')      // trailing commas before ]
+  // Fix 1: replace literal newlines/tabs inside the JSON string
+  slice = slice.replace(/[\r\n\t]/g, ' ')
 
-  try {
-    return JSON.parse(fixed)
-  } catch (_) {}
+  // Fix 2: remove trailing commas
+  slice = slice.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
 
-  // Last resort: try to parse up to the last complete field by trimming
-  // from the end until we get valid JSON
-  let attempt = fixed
-  while (attempt.length > 10) {
-    attempt = attempt.slice(0, attempt.lastIndexOf(','))
-    // Close all open arrays and object
-    const opens = (attempt.match(/{/g) || []).length - (attempt.match(/}/g) || []).length
-    const arrOpens = (attempt.match(/\[/g) || []).length - (attempt.match(/]/g) || []).length
-    const closed = attempt + ']'.repeat(Math.max(0, arrOpens)) + '}'.repeat(Math.max(0, opens))
-    try {
-      return JSON.parse(closed)
-    } catch (_) {}
-  }
+  // Try direct parse
+  try { return JSON.parse(slice) } catch (_) {}
+
+  // Fix 3: if still failing, try to auto-close truncated JSON
+  // Count open braces/brackets and close them
+  const opens = (slice.match(/{/g) || []).length - (slice.match(/}/g) || []).length
+  const arrOpens = (slice.match(/\[/g) || []).length - (slice.match(/]/g) || []).length
+
+  // If we have unclosed string (odd number of unescaped quotes after last comma)
+  // truncate to last complete key:value pair
+  let attempt = slice
+  // Remove trailing incomplete value
+  attempt = attempt.replace(/,?\s*"[^"]*$/, '')  // remove trailing incomplete key
+  attempt = attempt.replace(/:\s*"[^"]*$/, '')    // remove trailing incomplete value
+  attempt = attempt.replace(/,\s*$/, '')           // remove trailing comma
+
+  const o2 = (attempt.match(/{/g) || []).length - (attempt.match(/}/g) || []).length
+  const a2 = (attempt.match(/\[/g) || []).length - (attempt.match(/]/g) || []).length
+  attempt = attempt + ']'.repeat(Math.max(0, a2)) + '}'.repeat(Math.max(0, o2))
+
+  try { return JSON.parse(attempt) } catch (_) {}
 
   throw new Error('Could not parse Gemini JSON response')
+}
+
+// Ensure the result has all required fields with safe fallbacks
+function sanitizeResult(r: Record<string, unknown>): Record<string, unknown> {
+  return {
+    overall_score:  typeof r.overall_score === 'number' ? r.overall_score : 7.0,
+    headline:       typeof r.headline === 'string' && r.headline ? r.headline : 'Style analysis complete',
+    stylist_note:   typeof r.stylist_note === 'string' ? r.stylist_note : '',
+    style_archetype:typeof r.style_archetype === 'string' ? r.style_archetype : 'Contemporary',
+    categories:     Array.isArray(r.categories) && r.categories.length > 0 ? r.categories : [
+      { name: 'Overall', score: r.overall_score || 7.0, note: r.stylist_note || 'Analysis complete' }
+    ],
+    improvements:   Array.isArray(r.improvements) ? r.improvements : [],
+    what_works:     Array.isArray(r.what_works) ? r.what_works : [],
+    trend_tags:     Array.isArray(r.trend_tags) ? r.trend_tags : [],
+    upgrade_tip:    typeof r.upgrade_tip === 'string' ? r.upgrade_tip : '',
+    color_palette:  Array.isArray(r.color_palette) ? r.color_palette : [],
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -66,18 +80,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400, headers: CORS })
     }
 
-    const prompt = `You are Trenxia — an elite AI fashion stylist with the sharp eye of a Vogue editor, the warmth of a personal stylist, and the honesty of a best friend. Analyze this outfit image with extreme specificity — reference the actual items you see in the photo.
+    const prompt = `You are Trenxia — an elite AI fashion stylist. Analyze this outfit image.
 
 Context: Occasion="${occasion || 'Casual'}", Style="${vibe || 'any'}", Gender="${gender || 'any'}"
-${langInstruction ? `Language instruction: ${langInstruction}` : 'Respond in English.'}
+${langInstruction ? `Language: ${langInstruction}` : 'Respond in English.'}
 
-IMPORTANT: Respond ONLY with a single valid JSON object. No markdown, no backticks, no extra text before or after. All string values must use only regular ASCII double quotes. Do not use smart quotes or special characters in keys.
+Return ONLY a raw JSON object. No markdown. No backticks. No text before or after. Start with { and end with }.
+All string values must be on a single line (no newlines inside strings).
 
 {
   "overall_score": 7.4,
-  "headline": "One sharp punchy sentence about this look",
-  "stylist_note": "2-3 sentences about the outfit",
-  "style_archetype": "e.g. Off-Duty Model",
+  "headline": "one sentence about this look",
+  "stylist_note": "2-3 sentences honest warm feedback",
+  "style_archetype": "label like Off-Duty Model",
   "categories": [
     {"name":"Color Harmony","score":8.2,"note":"observation"},
     {"name":"Fit & Proportions","score":7.0,"note":"observation"},
@@ -88,13 +103,13 @@ IMPORTANT: Respond ONLY with a single valid JSON object. No markdown, no backtic
     {"name":"Overall Vibe","score":7.8,"note":"observation"}
   ],
   "improvements": [
-    {"priority":"high","item":"item name","action":"fix description"},
-    {"priority":"medium","item":"item name","action":"fix description"},
-    {"priority":"low","item":"item name","action":"fix description"}
+    {"priority":"high","item":"item","action":"fix"},
+    {"priority":"medium","item":"item","action":"fix"},
+    {"priority":"low","item":"item","action":"fix"}
   ],
   "what_works": ["strength 1","strength 2","strength 3"],
   "trend_tags": ["#tag1","#tag2","#tag3"],
-  "upgrade_tip": "one power move tip",
+  "upgrade_tip": "one power move",
   "color_palette": ["#hex1","#hex2","#hex3"]
 }`
 
@@ -104,14 +119,16 @@ IMPORTANT: Respond ONLY with a single valid JSON object. No markdown, no backtic
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [
-            { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } },
-            { text: prompt }
-          ]}],
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1500,
-            responseMimeType: 'application/json',  // Force Gemini to return JSON
+            maxOutputTokens: 2000,
+            // NO responseMimeType — causes issues with image+text input on Gemini 2.5
           }
         })
       }
@@ -125,19 +142,23 @@ IMPORTANT: Respond ONLY with a single valid JSON object. No markdown, no backtic
 
     const geminiData = await geminiRes.json()
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const finishReason = geminiData.candidates?.[0]?.finishReason
+
+    console.log('Analyze finish reason:', finishReason, 'Text length:', text.length)
 
     if (!text) {
-      console.error('Empty Gemini response:', JSON.stringify(geminiData))
       return NextResponse.json({ error: 'Empty response from AI. Please try again.' }, { status: 500, headers: CORS })
     }
 
-    let result: object
+    let parsed: Record<string, unknown>
     try {
-      result = extractJSON(text)
+      parsed = extractJSON(text) as Record<string, unknown>
     } catch (parseErr) {
-      console.error('JSON parse failed. Raw text:', text.slice(0, 500))
+      console.error('JSON parse failed. Raw:', text.slice(0, 800))
       return NextResponse.json({ error: 'Could not read AI response. Please try again.' }, { status: 500, headers: CORS })
     }
+
+    const result = sanitizeResult(parsed)
 
     return NextResponse.json({ result }, { headers: CORS })
 

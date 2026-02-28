@@ -18,16 +18,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No question provided' }, { status: 400, headers: CORS })
     }
 
-    // Check API key exists
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not set on server' }, { status: 500, headers: CORS })
     }
 
-    const prompt = `You are Trenxia, an elite fashion stylist. Answer this fashion question thoroughly and completely in at least 4-5 sentences. Never cut your answer short.
+    const prompt = `You are Trenxia, an elite fashion stylist and trend expert.
+Answer this fashion question thoroughly. Write a complete answer — do not stop mid-sentence.
 ${langInstruction || 'Respond in English.'}
 
-Question: ${question}`
+Question: ${question}
+
+Write your full answer now:`
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -36,15 +38,17 @@ Question: ${question}`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.8, maxOutputTokens: 1200 }
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 3000,  // High enough for Persian/Arabic/CJK which use more tokens
+          }
         })
       }
     )
 
-    // Return full Gemini error so we can see what's wrong
     if (!geminiRes.ok) {
       const errBody = await geminiRes.text()
-      console.error('Gemini error status:', geminiRes.status, 'body:', errBody)
+      console.error('Gemini explore error:', geminiRes.status, errBody)
       return NextResponse.json(
         { error: `Gemini error ${geminiRes.status}`, detail: errBody },
         { status: 500, headers: CORS }
@@ -52,16 +56,22 @@ Question: ${question}`
     }
 
     const data = await geminiRes.json()
+
+    // Check if response was cut off due to token limit
+    const finishReason = data.candidates?.[0]?.finishReason
     const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
     if (!answer) {
-      return NextResponse.json(
-        { error: 'Empty answer from Gemini', detail: JSON.stringify(data) },
-        { status: 500, headers: CORS }
-      )
+      console.error('Empty Gemini explore response. Finish reason:', finishReason, JSON.stringify(data))
+      return NextResponse.json({ error: 'Empty response from AI' }, { status: 500, headers: CORS })
     }
 
-    return NextResponse.json({ answer }, { headers: CORS })
+    // If cut off by max tokens, add ellipsis so frontend knows
+    const finalAnswer = (finishReason === 'MAX_TOKENS')
+      ? answer.trimEnd() + '…'
+      : answer
+
+    return NextResponse.json({ answer: finalAnswer }, { headers: CORS })
 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
