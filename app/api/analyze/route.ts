@@ -135,8 +135,11 @@ All string values must be on a single line (no newlines inside strings).
 
     if (!geminiRes.ok) {
       const err = await geminiRes.json().catch(() => ({}))
-      console.error('Gemini analyze error:', err)
-      return NextResponse.json({ error: 'AI analysis failed. Please try again.' }, { status: 500, headers: CORS })
+      console.error('Gemini analyze error:', geminiRes.status, JSON.stringify(err))
+      if (geminiRes.status === 429) {
+        return NextResponse.json({ error: '__errServer' }, { status: 429, headers: CORS })
+      }
+      return NextResponse.json({ error: '__errServer' }, { status: 500, headers: CORS })
     }
 
     const geminiData = await geminiRes.json()
