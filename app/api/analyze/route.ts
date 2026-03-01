@@ -128,6 +128,7 @@ All string values must be on a single line (no newlines inside strings).
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 4000,
+            thinkingConfig: { thinkingBudget: 0 },
           }
         })
       }
