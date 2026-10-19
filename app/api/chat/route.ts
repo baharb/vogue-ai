@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-}
+import { HEADERS, guard, optionsResponse, cleanLang, cleanText, MAX_HISTORY, geminiUrl, geminiHeaders } from '../../../lib/guard'
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS })
+  return optionsResponse()
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, context, history, langInstruction } = await request.json()
+    const blocked = await guard(request, 'chat')
+    if (blocked) return blocked
+
+    const body = await request.json()
+    const message = cleanText(body.message)
+    const context = cleanText(body.context, 4000)
+    const langInstruction = cleanLang(body.langInstruction)
+    const history = Array.isArray(body.history) ? body.history.slice(-MAX_HISTORY) : []
 
     if (!message) {
-      return NextResponse.json({ error: 'No message provided' }, { status: 400, headers: CORS })
+      return NextResponse.json({ error: 'No message provided' }, { status: 400, headers: HEADERS })
     }
 
     const systemMsg = {
@@ -27,18 +29,18 @@ export async function POST(request: NextRequest) {
       parts: [{ text: 'Ready to give honest, specific fashion advice.' }]
     }
 
-    const conversationHistory = (history || []).map((m: { role: string; text: string }) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.text }]
+    const conversationHistory = history.map((m: { role: string; text: string }) => ({
+      role: m?.role === 'user' ? 'user' : 'model',
+      parts: [{ text: cleanText(m?.text) }]
     }))
 
     const contents = [systemMsg, systemReply, ...conversationHistory, { role: 'user', parts: [{ text: message }] }]
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      geminiUrl(),
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: geminiHeaders(),
         body: JSON.stringify({ contents, generationConfig: { temperature: 0.8, maxOutputTokens: 2500, thinkingConfig: { thinkingBudget: 0 } } })
       }
     )
@@ -46,19 +48,16 @@ export async function POST(request: NextRequest) {
     if (!geminiRes.ok) {
       const errBody = await geminiRes.json().catch(() => ({ status: geminiRes.status }))
       console.error('Gemini chat error:', JSON.stringify(errBody))
-      return NextResponse.json(
-        { error: 'Chat failed', detail: errBody?.error?.message || `HTTP ${geminiRes.status}` },
-        { status: 500, headers: CORS }
-      )
+      return NextResponse.json({ error: 'Chat failed. Please try again.' }, { status: 500, headers: HEADERS })
     }
 
     const data = await geminiRes.json()
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    return NextResponse.json({ reply }, { headers: CORS })
+    return NextResponse.json({ reply }, { headers: HEADERS })
 
   } catch (error) {
     console.error('Chat error:', error)
-    return NextResponse.json({ error: 'Chat failed. Try again.' }, { status: 500, headers: CORS })
+    return NextResponse.json({ error: 'Chat failed. Try again.' }, { status: 500, headers: HEADERS })
   }
 }
