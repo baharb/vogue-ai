@@ -112,11 +112,6 @@ export async function guard(req: NextRequest, route: Route): Promise<NextRespons
   const limits = limitsFor(route)
 
   try {
-    const global = await incr(`tx:${day}:global`, ttl)
-    if (global > envInt('GLOBAL_DAILY_LIMIT', 5000)) {
-      return jsonError('__errBusy', 503, { code: 'global_limit' })
-    }
-
     const ipCount = await incr(`tx:${day}:${route}:ip:${clientIp(req)}`, ttl)
     if (ipCount > limits.ip) {
       return jsonError('__errDailyLimit', 429, { code: 'daily_limit' })
@@ -127,6 +122,12 @@ export async function guard(req: NextRequest, route: Route): Promise<NextRespons
       if (devCount > limits.device) {
         return jsonError('__errDailyLimit', 429, { code: 'daily_limit', limit: limits.device })
       }
+    }
+
+    // Counted last, so requests already refused above can't use up everyone's quota.
+    const global = await incr(`tx:${day}:global`, ttl)
+    if (global > envInt('GLOBAL_DAILY_LIMIT', 5000)) {
+      return jsonError('__errBusy', 503, { code: 'global_limit' })
     }
   } catch (err) {
     // Counter store down: fail open so the app keeps working, but log it.
