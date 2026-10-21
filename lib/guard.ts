@@ -11,10 +11,11 @@ import { NextRequest, NextResponse } from 'next/server'
 // (shared across all serverless instances). Without them an in-memory map is
 // used, which only limits per instance — fine for local dev, not for production.
 
-export type Route = 'analyze' | 'chat' | 'explore'
+export type Route = 'analyze' | 'chat' | 'explore' | 'body'
 
 const DEFAULT_LIMITS: Record<Route, { device: number; ip: number }> = {
   analyze: { device: 10, ip: 30 },
+  body:    { device: 5,  ip: 15 },
   chat:    { device: 60, ip: 150 },
   explore: { device: 40, ip: 100 },
 }
@@ -150,6 +151,18 @@ export function cleanLang(s: unknown): string {
 
 export function cleanText(s: unknown, max = MAX_TEXT): string {
   return typeof s === 'string' ? s.slice(0, max) : ''
+}
+
+// The user's saved body & colour profile (a short summary built by the app
+// from an earlier /api/body scan). Goes into prompts, so keep it short.
+export function cleanProfile(s: unknown): string {
+  return cleanText(s, 800)
+}
+
+export function profilePrompt(profile: string): string {
+  if (!profile) return ''
+  return `The user's saved style profile (from their own body & colour scan): ${profile}
+Use it to tailor fit, silhouette and colour advice. Be kind and body-positive: never comment on weight or size, never suggest changing the body.`
 }
 
 export function geminiUrl(model = 'gemini-2.5-flash') {

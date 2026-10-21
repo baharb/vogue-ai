@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { HEADERS, guard, optionsResponse, cleanLang, cleanText, MAX_IMAGE_B64, geminiUrl, geminiHeaders } from '../../../lib/guard'
+import { HEADERS, guard, optionsResponse, cleanLang, cleanText, cleanProfile, profilePrompt, MAX_IMAGE_B64, geminiUrl, geminiHeaders } from '../../../lib/guard'
 
 export async function OPTIONS() {
   return optionsResponse()
@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
     const vibe = cleanText(body.vibe, 40)
     const gender = cleanText(body.gender, 20)
     const langInstruction = cleanLang(body.langInstruction)
+    const profile = cleanProfile(body.profile)
 
     if (!imageBase64 || typeof imageBase64 !== 'string') {
       return NextResponse.json({ error: 'No image provided' }, { status: 400, headers: HEADERS })
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
     const prompt = `You are Trenxia — an elite AI fashion stylist. Analyze this outfit image.
 
 Context: Occasion="${occasion || 'Casual'}", Style="${vibe || 'any'}", Gender="${gender || 'any'}"
+${profilePrompt(profile)}
 ${langInstruction ? `Language: ${langInstruction}` : 'Respond in English.'}
 
 Return ONLY a raw JSON object. No markdown. No backticks. No text before or after. Start with { and end with }.

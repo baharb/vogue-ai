@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { HEADERS, guard, optionsResponse, cleanLang, cleanText, geminiUrl, geminiHeaders } from '../../../lib/guard'
+import { HEADERS, guard, optionsResponse, cleanLang, cleanText, cleanProfile, profilePrompt, geminiUrl, geminiHeaders } from '../../../lib/guard'
 
 export async function OPTIONS() {
   return optionsResponse()
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const question = cleanText(body.question, 1000)
     const langInstruction = cleanLang(body.langInstruction)
+    const profile = cleanProfile(body.profile)
 
     if (!question) {
       return NextResponse.json({ error: 'No question provided' }, { status: 400, headers: HEADERS })
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
 
     const prompt = `You are Trenxia, an elite fashion stylist and trend expert.
 Answer this fashion question with expert knowledge. Be specific and helpful.
+${profilePrompt(profile)}
 ${langInstruction || 'Respond in English.'}
 
 Question: ${question}`
