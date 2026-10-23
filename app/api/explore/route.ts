@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-}
+import { HEADERS, guard, optionsResponse, cleanLang, cleanText, cleanProfile, profilePrompt, geminiUrl, geminiHeaders } from '../../../lib/guard'
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS })
+  return optionsResponse()
 }
 
 // Trim text to the last complete sentence within maxChars.
@@ -37,28 +32,35 @@ function trimToLastSentence(text: string, maxChars = 1200): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { question, langInstruction } = await request.json()
+    const blocked = await guard(request, 'explore')
+    if (blocked) return blocked
+
+    const body = await request.json()
+    const question = cleanText(body.question, 1000)
+    const langInstruction = cleanLang(body.langInstruction)
+    const profile = cleanProfile(body.profile)
 
     if (!question) {
-      return NextResponse.json({ error: 'No question provided' }, { status: 400, headers: CORS })
+      return NextResponse.json({ error: 'No question provided' }, { status: 400, headers: HEADERS })
     }
 
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not set on server' }, { status: 500, headers: CORS })
+    if (!process.env.GEMINI_API_KEY) {
+      console.error('GEMINI_API_KEY not set on server')
+      return NextResponse.json({ error: 'Server error' }, { status: 500, headers: HEADERS })
     }
 
     const prompt = `You are Trenxia, an elite fashion stylist and trend expert.
 Answer this fashion question with expert knowledge. Be specific and helpful.
+${profilePrompt(profile)}
 ${langInstruction || 'Respond in English.'}
 
 Question: ${question}`
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(),
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: geminiHeaders(),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -72,10 +74,7 @@ Question: ${question}`
     if (!geminiRes.ok) {
       const errBody = await geminiRes.text()
       console.error('Gemini explore error:', geminiRes.status, errBody)
-      return NextResponse.json(
-        { error: `Gemini error ${geminiRes.status}`, detail: errBody },
-        { status: 500, headers: CORS }
-      )
+      return NextResponse.json({ error: 'Explore failed. Please try again.' }, { status: 500, headers: HEADERS })
     }
 
     const data = await geminiRes.json()
@@ -83,17 +82,17 @@ Question: ${question}`
 
     if (!raw) {
       console.error('Empty Gemini explore response:', JSON.stringify(data))
-      return NextResponse.json({ error: 'Empty response from AI' }, { status: 500, headers: CORS })
+      return NextResponse.json({ error: 'Empty response from AI' }, { status: 500, headers: HEADERS })
     }
 
     // Always return a clean, complete-sentence answer within 1200 chars
     const answer = trimToLastSentence(raw, 1200)
 
-    return NextResponse.json({ answer }, { headers: CORS })
+    return NextResponse.json({ answer }, { headers: HEADERS })
 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error('Explore error:', msg)
-    return NextResponse.json({ error: 'Server exception', detail: msg }, { status: 500, headers: CORS })
+    return NextResponse.json({ error: 'Server error' }, { status: 500, headers: HEADERS })
   }
 }

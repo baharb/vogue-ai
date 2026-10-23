@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-}
+import { HEADERS, guard, optionsResponse, cleanLang, cleanText, cleanProfile, profilePrompt, MAX_IMAGE_B64, geminiUrl, geminiHeaders } from '../../../lib/guard'
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS })
+  return optionsResponse()
 }
 
 function extractJSON(raw: string): object {
@@ -74,15 +69,28 @@ function sanitizeResult(r: Record<string, unknown>): Record<string, unknown> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageBase64, occasion, vibe, gender, langInstruction } = await request.json()
+    const blocked = await guard(request, 'analyze')
+    if (blocked) return blocked
 
-    if (!imageBase64) {
-      return NextResponse.json({ error: 'No image provided' }, { status: 400, headers: CORS })
+    const body = await request.json()
+    const imageBase64 = body.imageBase64
+    const occasion = cleanText(body.occasion, 40)
+    const vibe = cleanText(body.vibe, 40)
+    const gender = cleanText(body.gender, 20)
+    const langInstruction = cleanLang(body.langInstruction)
+    const profile = cleanProfile(body.profile)
+
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      return NextResponse.json({ error: 'No image provided' }, { status: 400, headers: HEADERS })
+    }
+    if (imageBase64.length > MAX_IMAGE_B64) {
+      return NextResponse.json({ error: 'Image is too large' }, { status: 413, headers: HEADERS })
     }
 
     const prompt = `You are Trenxia — an elite AI fashion stylist. Analyze this outfit image.
 
 Context: Occasion="${occasion || 'Casual'}", Style="${vibe || 'any'}", Gender="${gender || 'any'}"
+${profilePrompt(profile)}
 ${langInstruction ? `Language: ${langInstruction}` : 'Respond in English.'}
 
 Return ONLY a raw JSON object. No markdown. No backticks. No text before or after. Start with { and end with }.
@@ -114,10 +122,10 @@ All string values must be on a single line (no newlines inside strings).
 }`
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      geminiUrl(),
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: geminiHeaders(),
         body: JSON.stringify({
           contents: [{
             parts: [
@@ -138,9 +146,9 @@ All string values must be on a single line (no newlines inside strings).
       const err = await geminiRes.json().catch(() => ({}))
       console.error('Gemini analyze error:', geminiRes.status, JSON.stringify(err))
       if (geminiRes.status === 429) {
-        return NextResponse.json({ error: '__errServer' }, { status: 429, headers: CORS })
+        return NextResponse.json({ error: '__errServer' }, { status: 429, headers: HEADERS })
       }
-      return NextResponse.json({ error: '__errServer' }, { status: 500, headers: CORS })
+      return NextResponse.json({ error: '__errServer' }, { status: 500, headers: HEADERS })
     }
 
     const geminiData = await geminiRes.json()
@@ -150,7 +158,7 @@ All string values must be on a single line (no newlines inside strings).
     console.log('Analyze finish reason:', finishReason, 'Text length:', text.length)
 
     if (!text) {
-      return NextResponse.json({ error: 'Empty response from AI. Please try again.' }, { status: 500, headers: CORS })
+      return NextResponse.json({ error: 'Empty response from AI. Please try again.' }, { status: 500, headers: HEADERS })
     }
 
     let parsed: Record<string, unknown>
@@ -158,15 +166,15 @@ All string values must be on a single line (no newlines inside strings).
       parsed = extractJSON(text) as Record<string, unknown>
     } catch (parseErr) {
       console.error('JSON parse failed. Raw:', text.slice(0, 800))
-      return NextResponse.json({ error: 'Could not read AI response. Please try again.' }, { status: 500, headers: CORS })
+      return NextResponse.json({ error: 'Could not read AI response. Please try again.' }, { status: 500, headers: HEADERS })
     }
 
     const result = sanitizeResult(parsed)
 
-    return NextResponse.json({ result }, { headers: CORS })
+    return NextResponse.json({ result }, { headers: HEADERS })
 
   } catch (error) {
     console.error('Analyze error:', error)
-    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: CORS })
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: HEADERS })
   }
 }
