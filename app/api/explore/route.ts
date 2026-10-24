@@ -5,12 +5,11 @@ export async function OPTIONS() {
   return optionsResponse()
 }
 
-// Trim text to the last complete sentence within maxChars.
+// Drop an unfinished last sentence so the reply ends cleanly.
 // Handles Latin, Persian/Arabic (؟ ۔), and CJK (。！？) sentence endings.
-// This guarantees the answer always ends cleanly — never mid-word or mid-sentence.
-function trimToLastSentence(text: string, maxChars = 1200): string {
-  if (text.length <= maxChars) return text
-  const chunk = text.slice(0, maxChars)
+// Only used when Gemini hits its token limit and stops mid-sentence.
+function trimToLastSentence(text: string): string {
+  const chunk = text.trim()
   const lastEnd = Math.max(
     chunk.lastIndexOf('.'),
     chunk.lastIndexOf('!'),
@@ -22,12 +21,12 @@ function trimToLastSentence(text: string, maxChars = 1200): string {
     chunk.lastIndexOf('？'),   // Full-width question mark
   )
   // Only cut at sentence boundary if it's not too close to the start
-  if (lastEnd > maxChars * 0.4) {
+  if (lastEnd > chunk.length * 0.4) {
     return chunk.slice(0, lastEnd + 1).trim()
   }
   // Fallback: cut at last space (word boundary)
   const lastSpace = chunk.lastIndexOf(' ')
-  return chunk.slice(0, lastSpace > 0 ? lastSpace : maxChars).trim()
+  return lastSpace > 0 ? chunk.slice(0, lastSpace).trim() : chunk
 }
 
 export async function POST(request: NextRequest) {
@@ -51,6 +50,12 @@ export async function POST(request: NextRequest) {
 
     const prompt = `You are Trenxia, an elite fashion stylist and trend expert.
 Answer this fashion question with expert knowledge. Be specific and helpful.
+
+Keep it short enough to read on a phone in under a minute: about 120–200 words
+(similar length in other languages). Start with the direct answer in one or two
+sentences, then give at most 3–5 concrete tips as a short bullet list. You may use
+**bold** for key items. No long introductions, no headings, no tables, no sign-off.
+Always finish your last sentence.
 ${profilePrompt(profile)}
 ${langInstruction || 'Respond in English.'}
 
@@ -65,7 +70,8 @@ Question: ${question}`
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.8,
-            maxOutputTokens: 3000,
+            maxOutputTokens: 1024,
+            thinkingConfig: { thinkingBudget: 0 },
           }
         })
       }
@@ -79,14 +85,15 @@ Question: ${question}`
 
     const data = await geminiRes.json()
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const finishReason = data.candidates?.[0]?.finishReason
 
     if (!raw) {
       console.error('Empty Gemini explore response:', JSON.stringify(data))
       return NextResponse.json({ error: 'Empty response from AI' }, { status: 500, headers: HEADERS })
     }
 
-    // Always return a clean, complete-sentence answer within 1200 chars
-    const answer = trimToLastSentence(raw, 1200)
+    // The prompt keeps answers short; only trim if Gemini ran out of tokens mid-reply
+    const answer = finishReason === 'MAX_TOKENS' ? trimToLastSentence(raw) : raw.trim()
 
     return NextResponse.json({ answer }, { headers: HEADERS })
 
