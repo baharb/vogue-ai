@@ -11,13 +11,14 @@ import { NextRequest, NextResponse } from 'next/server'
 // (shared across all serverless instances). Without them an in-memory map is
 // used, which only limits per instance — fine for local dev, not for production.
 
-export type Route = 'analyze' | 'chat' | 'explore' | 'body'
+export type Route = 'analyze' | 'chat' | 'explore' | 'body' | 'shop'
 
 const DEFAULT_LIMITS: Record<Route, { device: number; ip: number }> = {
   analyze: { device: 10, ip: 30 },
   body:    { device: 5,  ip: 15 },
   chat:    { device: 60, ip: 150 },
   explore: { device: 40, ip: 100 },
+  shop:    { device: 15, ip: 45 },
 }
 
 function envInt(name: string, fallback: number): number {
