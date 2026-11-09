@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { HEADERS, guard, optionsResponse, cleanLang, cleanText, cleanProfile, profilePrompt, MAX_IMAGE_B64, geminiUrl, geminiHeaders } from '../../../lib/guard'
 import { extractJSON } from '../../../lib/json'
+import { getTrends, trendingBrandsFor } from '../../../lib/trends'
 
 // ─── FIND & SHOP ──────────────────────────────────────────────────────────────
 // The user photographs a piece they like. Gemini names the item and writes a
@@ -50,7 +51,7 @@ function affiliateLink(raw: string): { url: string; affiliate: boolean } {
 // ─── PRODUCT SEARCH ───────────────────────────────────────────────────────────
 type Product = {
   title: string; price: string; store: string; image: string
-  url: string; affiliate: boolean; rating?: number
+  url: string; affiliate: boolean; rating?: number; trending?: boolean
 }
 
 async function googleShopping(query: string, country: string): Promise<Product[]> {
@@ -179,6 +180,17 @@ Return ONLY a raw JSON object. No markdown. All strings on one line.
       return [] as Product[]
     })
 
+    // Put products from brands that are trending now first, with a label.
+    // The daily trend list is cached; don't let a cold start hold up results.
+    const trendData = await Promise.race([
+      getTrends('en').catch(() => null),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 8000)),
+    ])
+    const trendingBrands = trendingBrandsFor(trendData, gender)
+    const brandRes = trendingBrands.map(b => new RegExp(`(^|[^\\p{L}])${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}])`, 'iu'))
+    for (const p of products) p.trending = brandRes.some(re => re.test(p.title) || re.test(p.store))
+    products.sort((a, b) => Number(!!b.trending) - Number(!!a.trending))
+
     const it = parsed.item || {}
     const result = {
       ok: true,
@@ -192,6 +204,7 @@ Return ONLY a raw JSON object. No markdown. All strings on one line.
       stylist_note: str(parsed.stylist_note, 400),
       pair_with: list(parsed.pair_with, 4, 80),
       products,
+      trending_brands: trendingBrands.slice(0, 6),
       searches: storeSearches(query),
     }
 
